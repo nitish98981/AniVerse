@@ -95,6 +95,7 @@ fun MoreScreen(
                     onPreferenceClick = onClickNovel,
                 )
                         }
+                        item {
                 val downloadQueueState = downloadQueueStateProvider()
                 TextPreferenceWidget(
                     title = stringResource(MR.strings.label_download_queue),
