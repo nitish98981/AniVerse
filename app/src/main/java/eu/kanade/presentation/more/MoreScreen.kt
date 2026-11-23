@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.HelpOutline
 import androidx.compose.material.icons.automirrored.outlined.Label
+import androidx.compose.material.icons.outlined.AutoStories
 import androidx.compose.material.icons.outlined.CloudOff
 import androidx.compose.material.icons.outlined.GetApp
 import androidx.compose.material.icons.outlined.Info
@@ -47,6 +48,7 @@ fun MoreScreen(
     onClickPlayerSettings: () -> Unit,
     onClickSettings: () -> Unit,
     onClickAbout: () -> Unit,
+        onClickNovel: () -> Unit = {},
 ) {
     val uriHandler = LocalUriHandler.current
 
@@ -86,7 +88,13 @@ fun MoreScreen(
                 )
             }
 
-            item {
+                        item {
+                TextPreferenceWidget(
+                    title = "Novel reader",
+                    icon = Icons.Outlined.AutoStories,
+                    onPreferenceClick = onClickNovel,
+                )
+                        }
                 val downloadQueueState = downloadQueueStateProvider()
                 TextPreferenceWidget(
                     title = stringResource(MR.strings.label_download_queue),
