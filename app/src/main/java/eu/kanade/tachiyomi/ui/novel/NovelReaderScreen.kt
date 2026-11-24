@@ -103,8 +103,14 @@ class NovelReaderScreen : Screen() {
                         Intent.FLAG_GRANT_READ_URI_PERMISSION,
                     )
                 }
-                prefs.edit().putString(KEY_LAST_URI, picked.toString()).apply()
-                uri = picked
+                                val isPdf = context.contentResolver.getType(picked) == "application/pdf" ||
+                    displayName(context, picked).endsWith(".pdf", ignoreCase = true)
+                if (isPdf) {
+                    navigator.push(PdfReaderScreen(picked.toString()))
+                } else {
+                    prefs.edit().putString(KEY_LAST_URI, picked.toString()).apply()
+                    uri = picked
+                }
             }
         }
 
