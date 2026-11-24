@@ -81,6 +81,7 @@ class NovelLibraryScreen : Screen() {
                         }
                     },
                     actions = {
+                                                TextButton(onClick = { navigator.push(GutenbergScreen()) }) { Text("Get books") }
                         TextButton(onClick = { picker.launch(arrayOf("*/*")) }) { Text("Add file") }
                     },
                 )
