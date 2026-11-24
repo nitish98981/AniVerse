@@ -2,11 +2,14 @@ package eu.kanade.tachiyomi.ui.novel
 
 import android.content.Context
 import android.content.Intent
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.net.Uri
 import android.provider.OpenableColumns
 import android.text.Html
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -17,6 +20,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
@@ -46,12 +50,15 @@ import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -62,6 +69,7 @@ import cafe.adriel.voyager.navigator.currentOrThrow
 import eu.kanade.presentation.util.Screen
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.io.File
 import java.net.URLDecoder
 import java.util.zip.ZipInputStream
 
@@ -69,6 +77,8 @@ private const val PREFS_NAME = "aniverse_novel"
 private const val KEY_FONT_SIZE = "font_size"
 private const val KEY_THEME = "theme"
 private const val KEY_LAST_URI = "last_uri"
+private const val IMAGE_START = "[[IMG:"
+private const val IMAGE_END = "]]"
 private val THEME_NAMES = listOf("App theme", "Light", "Sepia", "Dark")
 
 private class NovelBook(val title: String, val chapters: List<NovelChapter>)
@@ -103,8 +113,8 @@ class NovelReaderScreen : Screen() {
                         Intent.FLAG_GRANT_READ_URI_PERMISSION,
                     )
                 }
-                                NovelLibraryStore.add(context, picked)
-                                val isPdf = context.contentResolver.getType(picked) == "application/pdf" ||
+                NovelLibraryStore.add(context, picked)
+                val isPdf = context.contentResolver.getType(picked) == "application/pdf" ||
                     displayName(context, picked).endsWith(".pdf", ignoreCase = true)
                 if (isPdf) {
                     navigator.push(PdfReaderScreen(picked.toString()))
@@ -344,13 +354,64 @@ private fun ChapterText(
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
         items(paragraphs) { paragraph ->
-            Text(
-                text = paragraph,
-                color = color,
-                fontSize = fontSize.sp,
-                lineHeight = (fontSize * 1.6f).sp,
-            )
+            val imagePath = imagePathOf(paragraph)
+            if (imagePath != null) {
+                ChapterImage(imagePath)
+            } else {
+                Text(
+                    text = paragraph,
+                    color = color,
+                    fontSize = fontSize.sp,
+                    lineHeight = (fontSize * 1.6f).sp,
+                )
+            }
         }
+    }
+}
+
+@Composable
+private fun ChapterImage(path: String) {
+    val bitmap by produceState<Bitmap?>(initialValue = null, path) {
+        value = withContext(Dispatchers.IO) { decodeScaled(path, 1080) }
+    }
+    val current = bitmap
+    if (current != null) {
+        Image(
+            bitmap = current.asImageBitmap(),
+            contentDescription = null,
+            modifier = Modifier.fillMaxWidth(),
+            contentScale = ContentScale.FillWidth,
+        )
+    } else {
+        Spacer(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(160.dp),
+        )
+    }
+}
+
+private fun decodeScaled(path: String, maxWidth: Int): Bitmap? {
+    val bounds = BitmapFactory.Options()
+    bounds.inJustDecodeBounds = true
+    BitmapFactory.decodeFile(path, bounds)
+    if (bounds.outWidth <= 0) {
+        return null
+    }
+    var sample = 1
+    while (bounds.outWidth / (sample * 2) >= maxWidth) {
+        sample *= 2
+    }
+    val options = BitmapFactory.Options()
+    options.inSampleSize = sample
+    return BitmapFactory.decodeFile(path, options)
+}
+
+private fun imagePathOf(paragraph: String): String? {
+    return if (paragraph.startsWith(IMAGE_START) && paragraph.endsWith(IMAGE_END)) {
+        paragraph.substring(IMAGE_START.length, paragraph.length - IMAGE_END.length)
+    } else {
+        null
     }
 }
 
@@ -385,12 +446,22 @@ private fun parseText(context: Context, uri: Uri, name: String): NovelBook {
 
 private fun parseEpub(context: Context, uri: Uri, name: String): NovelBook {
     val files = HashMap<String, ByteArray>()
+    val imageDir = File(context.cacheDir, "novel_img/" + positionKey(uri).replace("-", "n"))
+    imageDir.mkdirs()
     val stream = context.contentResolver.openInputStream(uri) ?: error("Cannot open this file")
     ZipInputStream(stream).use { zip ->
         var entry = zip.nextEntry
         while (entry != null) {
-            if (!entry.isDirectory && isTextEntry(entry.name)) {
-                files[entry.name] = zip.readBytes()
+            val entryName = entry.name
+            if (!entry.isDirectory && isTextEntry(entryName)) {
+                files[entryName] = zip.readBytes()
+            } else if (!entry.isDirectory && isImageEntry(entryName)) {
+                val target = imageFile(imageDir, entryName)
+                if (!target.exists() || target.length() == 0L) {
+                    runCatching {
+                        target.outputStream().use { output -> zip.copyTo(output) }
+                    }.onFailure { target.delete() }
+                }
             }
             entry = zip.nextEntry
         }
@@ -422,14 +493,19 @@ private fun parseEpub(context: Context, uri: Uri, name: String): NovelBook {
     val chapters = ArrayList<NovelChapter>()
     for (idref in spine) {
         val href = manifest[idref] ?: continue
-        val html = files[resolvePath(baseDir, href)]?.toString(Charsets.UTF_8) ?: continue
-        val paragraphs = htmlToParagraphs(html)
+        val chapterPath = resolvePath(baseDir, href)
+        val html = files[chapterPath]?.toString(Charsets.UTF_8) ?: continue
+        val paragraphs = htmlToParagraphs(html, chapterPath.substringBeforeLast('/', ""), imageDir)
         if (paragraphs.isEmpty()) continue
         val first = paragraphs.first()
-        val chapterTitle = if (first.length <= 60) first else "Chapter ${chapters.size + 1}"
+        val chapterTitle = if (first.length <= 60 && imagePathOf(first) == null) {
+            first
+        } else {
+            "Chapter ${chapters.size + 1}"
+        }
         chapters.add(NovelChapter(chapterTitle, paragraphs))
     }
-    if (chapters.isEmpty()) error("No readable text found in this EPUB")
+    if (chapters.isEmpty()) error("No readable content found in this EPUB")
     return NovelBook(title, chapters)
 }
 
@@ -437,6 +513,16 @@ private fun isTextEntry(name: String): Boolean {
     val lower = name.lowercase()
     return lower.endsWith(".xhtml") || lower.endsWith(".html") || lower.endsWith(".htm") ||
         lower.endsWith(".xml") || lower.endsWith(".opf")
+}
+
+private fun isImageEntry(name: String): Boolean {
+    val lower = name.lowercase()
+    return lower.endsWith(".jpg") || lower.endsWith(".jpeg") || lower.endsWith(".png") ||
+        lower.endsWith(".gif") || lower.endsWith(".webp")
+}
+
+private fun imageFile(dir: File, zipPath: String): File {
+    return File(dir, zipPath.replace(Regex("[^A-Za-z0-9._-]"), "_"))
 }
 
 private fun tagAttr(tag: String, attr: String): String? {
@@ -463,12 +549,22 @@ private fun resolvePath(baseDir: String, href: String): String {
     return parts.joinToString("/")
 }
 
-private fun htmlToParagraphs(html: String): List<String> {
+private fun htmlToParagraphs(html: String, chapterDir: String, imageDir: File): List<String> {
     val cleaned = html
         .replace(Regex("(?is)<head.*?</head>"), "")
         .replace(Regex("(?is)<script.*?</script>"), "")
         .replace(Regex("(?is)<style.*?</style>"), "")
-    val text = Html.fromHtml(cleaned, Html.FROM_HTML_MODE_LEGACY).toString().replace("\uFFFC", "")
+    val withImages = Regex("<(img|image)\\b[^>]*>", RegexOption.IGNORE_CASE).replace(cleaned) { match ->
+        val tag = match.value
+        val src = tagAttr(tag, "src") ?: tagAttr(tag, "href")
+        val file = if (src == null) null else imageFile(imageDir, resolvePath(chapterDir, src))
+        if (file != null && file.exists()) {
+            "<p>" + IMAGE_START + file.absolutePath + IMAGE_END + "</p>"
+        } else {
+            ""
+        }
+    }
+    val text = Html.fromHtml(withImages, Html.FROM_HTML_MODE_LEGACY).toString().replace("\uFFFC", "")
     return toParagraphs(text)
 }
 
