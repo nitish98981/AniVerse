@@ -102,7 +102,7 @@ class GutenbergScreen : Screen() {
                     }
                 } else {
                     books = emptyList()
-                    error = "Could not load books. Check your internet and try again."
+                    error = "Could not load books: " + (result.exceptionOrNull()?.message ?: "unknown error")
                 }
                 loading = false
             }
@@ -111,7 +111,7 @@ class GutenbergScreen : Screen() {
         fun download(book: GutenbergBook) {
             scope.launch {
                 busy = busy + book.id
-                val result = withContext(Dispatchers.IO) { runCatching { downloadEpub(context, book) } }
+                val result = withContext(Dispatchers.IO) { runCatching { downloadEpubSafe(context, book) } }
                 busy = busy - book.id
                 val file = result.getOrNull()
                 if (file != null) {
@@ -333,4 +333,40 @@ private fun downloadEpub(context: Context, book: GutenbergBook): File {
         error("Could not save the file")
     }
     return target
+}
+private fun downloadEpubSafe(context: Context, book: GutenbergBook): File {
+    val dir = File(context.filesDir, "gutenberg")
+    dir.mkdirs()
+    val target = File(dir, "pg${book.id}.epub")
+    if (target.exists() && target.length() > 0) {
+        return target
+    }
+    val url = "https://www.gutenberg.org/ebooks/${book.id}.epub.noimages"
+    val temp = File(dir, "pg${book.id}.part")
+    var lastCode = 0
+    for (attempt in 1..3) {
+        val connection = URL(url).openConnection() as HttpURLConnection
+        connection.instanceFollowRedirects = true
+        connection.connectTimeout = 15000
+        connection.readTimeout = 60000
+        connection.setRequestProperty("User-Agent", "AniVerse/1.0 (personal book reader)")
+        try {
+            lastCode = connection.responseCode
+            if (lastCode in 200..299) {
+                connection.inputStream.use { input ->
+                    temp.outputStream().use { output -> input.copyTo(output) }
+                }
+                if (temp.renameTo(target)) {
+                    return target
+                }
+                error("Could not save the file")
+            }
+        } finally {
+            connection.disconnect()
+        }
+        if (attempt < 3) {
+            Thread.sleep(2500L * attempt)
+        }
+    }
+    error("Project Gutenberg is busy (error $lastCode). Please try again in a minute.")
 }
