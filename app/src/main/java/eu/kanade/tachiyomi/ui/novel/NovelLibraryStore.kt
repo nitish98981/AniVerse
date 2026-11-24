@@ -64,7 +64,11 @@ internal object NovelLibraryStore {
         )
         save(context, others + entry)
     }
-
+    fun addFile(context: Context, file: java.io.File, title: String, type: String) {
+        val key = Uri.fromFile(file).toString()
+        val others = load(context).filter { it.uri != key }
+        save(context, others + NovelEntry(key, title, type, System.currentTimeMillis()))
+    }
     fun touch(context: Context, uri: String) {
         val updated = load(context).map {
             if (it.uri == uri) it.copy(lastOpened = System.currentTimeMillis()) else it
