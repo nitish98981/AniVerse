@@ -70,7 +70,7 @@ object LocaleHelper {
      * Return the default languages enabled for the sources.
      */
     fun getDefaultEnabledLanguages(): Set<String> {
-        return setOf("all", "en", Locale.getDefault().language)
+                return setOf("all", "en", "hi", Locale.getDefault().language)
     }
 
     /**
