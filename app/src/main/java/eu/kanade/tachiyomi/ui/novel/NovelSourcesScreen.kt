@@ -65,6 +65,7 @@ class NovelSourcesScreen : Screen() {
                         }
                     },
                     actions = {
+                        TextButton(onClick = { navigator.push(NovelShelfScreen()) }) { Text("Library") }
                         TextButton(onClick = { showAdd = true }) { Text("Add source") }
                     },
                 )
