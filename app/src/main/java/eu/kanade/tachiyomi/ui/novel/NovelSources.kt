@@ -111,6 +111,28 @@ object NovelSourceStore {
         val def = NovelSourceDef.parse(raw)
         save(context, load(context).filter { it.id != def.id } + def)
         return def
+            fun addAny(context: Context, raw: String): List<NovelSourceDef> {
+        val text = raw.trim()
+        val items = ArrayList<String>()
+
+        fun collect(array: JSONArray) {
+            for (i in 0 until array.length()) {
+                when (val v = array.get(i)) {
+                    is JSONObject -> items.add(v.toString())
+                    is String -> items.add(NovelHttp.fetchText(v))
+                }
+            }
+        }
+
+        if (text.startsWith("[")) {
+            collect(JSONArray(text))
+        } else {
+            val obj = JSONObject(text)
+            val array = obj.optJSONArray("sources")
+            if (array != null) collect(array) else items.add(text)
+        }
+        return items.map { add(context, it) }
+            }
     }
 
     fun remove(context: Context, id: String) {
