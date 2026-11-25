@@ -94,7 +94,7 @@ class NovelSourcesScreen : Screen() {
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clickable { }
+                                .clickable { navigator.push(NovelSearchScreen(source.id)) }
                                 .padding(horizontal = 16.dp, vertical = 12.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
