@@ -51,6 +51,9 @@ import eu.kanade.presentation.util.Screen
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import androidx.compose.foundation.layout.size
+import androidx.compose.ui.layout.ContentScale
+import coil3.compose.AsyncImage
 
 class NovelSearchScreen(private val sourceId: String) : Screen() {
 
@@ -188,6 +191,28 @@ class NovelDetailScreen(
                     item {
                         Column(modifier = Modifier.padding(16.dp)) {
                             Text(d.title.ifEmpty { novelTitle }, style = MaterialTheme.typography.titleLarge)
+if (d.cover.isNotEmpty()) {
+    AsyncImage(
+        model = d.cover,
+        contentDescription = null,
+        contentScale = ContentScale.Crop,
+        modifier = Modifier.padding(top = 8.dp).size(width = 100.dp, height = 150.dp),
+    )
+}
+var inShelf by remember { mutableStateOf(NovelShelfStore.contains(context, novelUrl)) }
+TextButton(
+    onClick = {
+        if (inShelf) {
+            NovelShelfStore.remove(context, novelUrl)
+        } else {
+            NovelShelfStore.add(
+                context,
+                NovelShelfItem(sourceId, novelUrl, d.title.ifEmpty { novelTitle }, d.cover),
+            )
+        }
+        inShelf = !inShelf
+    },
+) { Text(if (inShelf) "Remove from library" else "Add to library") }
                             if (d.description.isNotEmpty()) {
                                 Text(
                                     text = d.description,
