@@ -142,7 +142,7 @@ class NovelSourcesScreen : Screen() {
                                         } else {
                                             text
                                         }
-                                        NovelSourceStore.add(context, raw)
+                                        NovelSourceStore.addAny(context, raw)
                                     }
                                 }
                                 busy = false
@@ -151,7 +151,7 @@ class NovelSourcesScreen : Screen() {
                                     sources = NovelSourceStore.load(context)
                                     input = ""
                                     showAdd = false
-                                    Toast.makeText(context, "Added " + added.name, Toast.LENGTH_SHORT).show()
+                                    Toast.makeText(context, "Added " + added.size + " source(s)", Toast.LENGTH_SHORT).show()
                                 } else {
                                     val reason = result.exceptionOrNull()?.message ?: "unknown error"
                                     Toast.makeText(context, "Invalid source: $reason", Toast.LENGTH_LONG).show()
